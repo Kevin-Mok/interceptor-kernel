@@ -1,3 +1,5 @@
+/* include {{{ */
+
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -11,12 +13,18 @@
 #include <linux/syscalls.h>
 #include "interceptor.h"
 
+/* }}} include */
 
-MODULE_DESCRIPTION("My kernel module");
-MODULE_AUTHOR("Your name here ...");
+/* module description {{{ */
+
+MODULE_DESCRIPTION("Kevin's Kernel Module");
+MODULE_AUTHOR("Kevin Mok");
 MODULE_LICENSE("GPL");
 
-//----- System Call Table Stuff ------------------------------------
+/* }}} module description */
+
+/* System Call Table Stuff  {{{ */
+
 /* Symbol that allows access to the kernel system call table */
 extern void* sys_call_table[];
 
@@ -39,10 +47,11 @@ void set_addr_ro(unsigned long addr) {
 	pte->pte = pte->pte &~_PAGE_RW;
 
 }
-//-------------------------------------------------------------
 
+/* }}} System Call Table Stuff  */
 
-//----- Data structures and bookkeeping -----------------------
+/* Data structures and bookkeeping  {{{ */
+
 /**
  * This block contains the data structures needed for keeping track of
  * intercepted system calls (including their original calls), pid monitoring
@@ -79,10 +88,11 @@ mytable table[NR_syscalls];
 /* Access to the system call table and your metadata table must be synchronized */
 spinlock_t my_table_lock = SPIN_LOCK_UNLOCKED;
 spinlock_t sys_call_table_lock = SPIN_LOCK_UNLOCKED;
-//-------------------------------------------------------------
 
+/* }}} Data structures and bookkeeping  */
 
-//----------LIST OPERATIONS------------------------------------
+/* list operations {{{ */
+
 /**
  * These operations are meant for manipulating the list of pids 
  * Nothing to do here, but please make sure to read over these functions 
@@ -227,9 +237,12 @@ static int check_pid_monitored(int sysc, pid_t pid) {
 	}
 	return 0;	
 }
-//----------------------------------------------------------------
 
-//----- Intercepting exit_group ----------------------------------
+/* }}} LIST OPERATIONS */
+
+/* Intercepting exit_group  {{{ */
+
+//----- ----------------------------------
 /**
  * Since a process can exit without its owner specifically requesting
  * to stop monitoring it, we must intercept the exit_group system call
@@ -258,9 +271,10 @@ asmlinkage long my_exit_group(struct pt_regs reg)
 
 
 }
-//----------------------------------------------------------------
 
+/* }}} Intercepting exit_group  */
 
+/* interceptor {{{ */
 
 /** 
  * This is the generic interceptor function.
@@ -286,6 +300,10 @@ asmlinkage long interceptor(struct pt_regs reg) {
 
 	return 0; // Just a placeholder, so it compiles with no warnings!
 }
+
+/* }}} interceptor */
+
+/* My system call  {{{ */
 
 /**
  * My system call - this function is called whenever a user issues a MY_CUSTOM_SYSCALL system call.
@@ -349,6 +367,10 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 	return 0;
 }
 
+/* }}} My system call  */
+
+/* Module initialization {{{ */
+
 /**
  *
  */
@@ -381,6 +403,10 @@ static int init_function(void) {
 	return 0;
 }
 
+/* }}} Module initialization */
+
+/* exit_function {{{ */
+
 /**
  * Module exits. 
  *
@@ -404,3 +430,4 @@ static void exit_function(void)
 module_init(init_function);
 module_exit(exit_function);
 
+/* }}} exit_function */
