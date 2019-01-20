@@ -26,6 +26,7 @@ MODULE_LICENSE("GPL");
 /* System Call Table Stuff  {{{ */
 
 /* Symbol that allows access to the kernel system call table */
+// c0598150 R sys_call_table
 extern void* sys_call_table[];
 
 /* The sys_call_table is read-only => must make it RW before replacing a syscall */
@@ -91,154 +92,154 @@ spinlock_t sys_call_table_lock = SPIN_LOCK_UNLOCKED;
 
 /* }}} Data structures and bookkeeping  */
 
-/* list operations {{{ */
+/* [> list operations {{{ <] */
 
 /**
- * These operations are meant for manipulating the list of pids 
- * Nothing to do here, but please make sure to read over these functions 
+ * These operations are meant for manipulating the list of pids
+ * Nothing to do here, but please make sure to read over these functions
  * to understand their purpose, as you will need to use them!
  */
 
 /**
- * Add a pid to a syscall's list of monitored pids. 
+ * Add a pid to a syscall's list of monitored pids.
  * Returns -ENOMEM if the operation is unsuccessful.
  */
-static int add_pid_sysc(pid_t pid, int sysc)
-{
-	struct pid_list *ple=(struct pid_list*)kmalloc(sizeof(struct pid_list), GFP_KERNEL);
+/* static int add_pid_sysc(pid_t pid, int sysc) */
+/* { */
+	/* struct pid_list *ple=(struct pid_list*)kmalloc(sizeof(struct pid_list), GFP_KERNEL); */
 
-	if (!ple)
-		return -ENOMEM;
+	/* if (!ple) */
+		/* return -ENOMEM; */
 
-	INIT_LIST_HEAD(&ple->list);
-	ple->pid=pid;
+	/* INIT_LIST_HEAD(&ple->list); */
+	/* ple->pid=pid; */
 
-	list_add(&ple->list, &(table[sysc].my_list));
-	table[sysc].listcount++;
+	/* list_add(&ple->list, &(table[sysc].my_list)); */
+	/* table[sysc].listcount++; */
 
-	return 0;
-}
+	/* return 0; */
+/* } */
 
 /**
  * Remove a pid from a system call's list of monitored pids.
  * Returns -EINVAL if no such pid was found in the list.
  */
-static int del_pid_sysc(pid_t pid, int sysc)
-{
-	struct list_head *i;
-	struct pid_list *ple;
+/* static int del_pid_sysc(pid_t pid, int sysc) */
+/* { */
+	/* struct list_head *i; */
+	/* struct pid_list *ple; */
 
-	list_for_each(i, &(table[sysc].my_list)) {
+	/* list_for_each(i, &(table[sysc].my_list)) { */
 
-		ple=list_entry(i, struct pid_list, list);
-		if(ple->pid == pid) {
+		/* ple=list_entry(i, struct pid_list, list); */
+		/* if(ple->pid == pid) { */
 
-			list_del(i);
-			kfree(ple);
+			/* list_del(i); */
+			/* kfree(ple); */
 
-			table[sysc].listcount--;
+			/* table[sysc].listcount--; */
 			/* If there are no more pids in sysc's list of pids, then
 			 * stop the monitoring only if it's not for all pids (monitored=2) */
-			if(table[sysc].listcount == 0 && table[sysc].monitored == 1) {
-				table[sysc].monitored = 0;
-			}
+			/* if(table[sysc].listcount == 0 && table[sysc].monitored == 1) { */
+				/* table[sysc].monitored = 0; */
+			/* } */
 
-			return 0;
-		}
-	}
+			/* return 0; */
+		/* } */
+	/* } */
 
-	return -EINVAL;
-}
+	/* return -EINVAL; */
+/* } */
 
 /**
  * Remove a pid from all the lists of monitored pids (for all intercepted syscalls).
  * Returns -1 if this process is not being monitored in any list.
  */
-static int del_pid(pid_t pid)
-{
-	struct list_head *i, *n;
-	struct pid_list *ple;
-	int ispid = 0, s = 0;
+/* static int del_pid(pid_t pid) */
+/* { */
+	/* struct list_head *i, *n; */
+	/* struct pid_list *ple; */
+	/* int ispid = 0, s = 0; */
 
-	for(s = 1; s < NR_syscalls; s++) {
+	/* for(s = 1; s < NR_syscalls; s++) { */
 
-		list_for_each_safe(i, n, &(table[s].my_list)) {
+		/* list_for_each_safe(i, n, &(table[s].my_list)) { */
 
-			ple=list_entry(i, struct pid_list, list);
-			if(ple->pid == pid) {
+			/* ple=list_entry(i, struct pid_list, list); */
+			/* if(ple->pid == pid) { */
 
-				list_del(i);
-				ispid = 1;
-				kfree(ple);
+				/* list_del(i); */
+				/* ispid = 1; */
+				/* kfree(ple); */
 
-				table[s].listcount--;
+				/* table[s].listcount--; */
 				/* If there are no more pids in sysc's list of pids, then
 				 * stop the monitoring only if it's not for all pids (monitored=2) */
-				if(table[s].listcount == 0 && table[s].monitored == 1) {
-					table[s].monitored = 0;
-				}
-			}
-		}
-	}
+				/* if(table[s].listcount == 0 && table[s].monitored == 1) { */
+					/* table[s].monitored = 0; */
+				/* } */
+			/* } */
+		/* } */
+	/* } */
 
-	if (ispid) return 0;
-	return -1;
-}
+	/* if (ispid) return 0; */
+	/* return -1; */
+/* } */
 
 /**
  * Clear the list of monitored pids for a specific syscall.
  */
-static void destroy_list(int sysc) {
+/* static void destroy_list(int sysc) { */
 
-	struct list_head *i, *n;
-	struct pid_list *ple;
+	/* struct list_head *i, *n; */
+	/* struct pid_list *ple; */
 
-	list_for_each_safe(i, n, &(table[sysc].my_list)) {
+	/* list_for_each_safe(i, n, &(table[sysc].my_list)) { */
 
-		ple=list_entry(i, struct pid_list, list);
-		list_del(i);
-		kfree(ple);
-	}
+		/* ple=list_entry(i, struct pid_list, list); */
+		/* list_del(i); */
+		/* kfree(ple); */
+	/* } */
 
-	table[sysc].listcount = 0;
-	table[sysc].monitored = 0;
-}
+	/* table[sysc].listcount = 0; */
+	/* table[sysc].monitored = 0; */
+/* } */
 
 /**
- * Check if two pids have the same owner - useful for checking if a pid 
+ * Check if two pids have the same owner - useful for checking if a pid
  * requested to be monitored is owned by the requesting process.
- * Remember that when requesting to start monitoring for a pid, only the 
+ * Remember that when requesting to start monitoring for a pid, only the
  * owner of that pid is allowed to request that.
  */
-static int check_pids_same_owner(pid_t pid1, pid_t pid2) {
+/* static int check_pids_same_owner(pid_t pid1, pid_t pid2) { */
 
-	struct task_struct *p1 = pid_task(find_vpid(pid1), PIDTYPE_PID);
-	struct task_struct *p2 = pid_task(find_vpid(pid2), PIDTYPE_PID);
-	if(p1->real_cred->uid != p2->real_cred->uid)
-		return -EPERM;
-	return 0;
-}
+	/* struct task_struct *p1 = pid_task(find_vpid(pid1), PIDTYPE_PID); */
+	/* struct task_struct *p2 = pid_task(find_vpid(pid2), PIDTYPE_PID); */
+	/* if(p1->real_cred->uid != p2->real_cred->uid) */
+		/* return -EPERM; */
+	/* return 0; */
+/* } */
 
 /**
  * Check if a pid is already being monitored for a specific syscall.
  * Returns 1 if it already is, or 0 if pid is not in sysc's list.
  */
-static int check_pid_monitored(int sysc, pid_t pid) {
+/* static int check_pid_monitored(int sysc, pid_t pid) { */
 
-	struct list_head *i;
-	struct pid_list *ple;
+	/* struct list_head *i; */
+	/* struct pid_list *ple; */
 
-	list_for_each(i, &(table[sysc].my_list)) {
+	/* list_for_each(i, &(table[sysc].my_list)) { */
 
-		ple=list_entry(i, struct pid_list, list);
-		if(ple->pid == pid) 
-			return 1;
-		
-	}
-	return 0;	
-}
+		/* ple=list_entry(i, struct pid_list, list); */
+		/* if(ple->pid == pid)  */
+			/* return 1; */
 
-/* }}} LIST OPERATIONS */
+	/* } */
+	/* return 0;	 */
+/* } */
+
+/* [> }}} LIST OPERATIONS <] */
 
 /* Intercepting exit_group  {{{ */
 
@@ -267,9 +268,9 @@ asmlinkage long (*orig_exit_group)(struct pt_regs reg);
  */
 asmlinkage long my_exit_group(struct pt_regs reg)
 {
-
-
-
+	/* using printk in this function will potentially result in errors! */
+    printk(KERN_DEBUG "\nThis is my_exit_group.\n");
+	return 0;
 }
 
 /* }}} Intercepting exit_group  */
@@ -281,29 +282,27 @@ asmlinkage long my_exit_group(struct pt_regs reg)
  * It should just log a message and call the original syscall.
  * 
  * TODO: Implement this function. 
- * - Check first to see if the syscall is being monitored for the current->pid. 
- * - Recall the convention for the "monitored" flag in the mytable struct: 
- *     monitored=0 => not monitored
- *     monitored=1 => some pids are monitored, check the corresponding my_list
- *     monitored=2 => all pids are monitored for this syscall
  * - Use the log_message macro, to log the system call parameters!
  *     Remember that the parameters are passed in the pt_regs registers.
  *     The syscall parameters are found (in order) in the 
  *     ax, bx, cx, dx, si, di, and bp registers (see the pt_regs struct).
  * - Don't forget to call the original system call, so we allow processes to proceed as normal.
+ *
+ * - Check first to see if the syscall is being monitored for the current->pid. 
+ * - Recall the convention for the "monitored" flag in the mytable struct: 
+ *     monitored=0 => not monitored
+ *     monitored=1 => some pids are monitored, check the corresponding my_list
+ *     monitored=2 => all pids are monitored for this syscall
  */
 asmlinkage long interceptor(struct pt_regs reg) {
-
-
-
-
-
 	return 0; // Just a placeholder, so it compiles with no warnings!
 }
 
 /* }}} interceptor */
 
 /* My system call  {{{ */
+
+/* instr. {{{ */
 
 /**
  * My system call - this function is called whenever a user issues a MY_CUSTOM_SYSCALL system call.
@@ -357,13 +356,10 @@ asmlinkage long interceptor(struct pt_regs reg) {
  *   to the system call table and the lists of monitored pids. Be careful to unlock any spinlocks 
  *   you might be holding, before you exit the function (including error cases!).  
  */
+
+/* }}} instr. */
 asmlinkage long my_syscall(int cmd, int syscall, int pid) {
-
-
-
-
-
-
+    printk(KERN_DEBUG "\nCalled my_syscall with %d, %d, %d.\n", cmd, syscall, pid);
 	return 0;
 }
 
@@ -380,26 +376,37 @@ long (*orig_custom_syscall)(void);
 /**
  * Module initialization. 
  *
- * TODO: Make sure to:  
- * - Hijack MY_CUSTOM_SYSCALL and save the original in orig_custom_syscall.
- * - Hijack the exit_group system call (__NR_exit_group) and save the original 
- *   in orig_exit_group.
- * - Make sure to set the system call table to writable when making changes, 
- *   then set it back to read only once done.
+ * TODO-F: Make sure to:  
  * - Perform any necessary initializations for bookkeeping data structures. 
  *   To initialize a list, use 
  *        INIT_LIST_HEAD (&some_list);
  *   where some_list is a "struct list_head". 
  * - Ensure synchronization as needed.
+ *
+ * done (untested)
+ * - Hijack MY_CUSTOM_SYSCALL and save the original in orig_custom_syscall.
+ * - Hijack the exit_group system call (__NR_exit_group) and save the original 
+ *   in orig_exit_group.
+ * - Make sure to set the system call table to writable when making changes, 
+ *   then set it back to read only once done.
  */
 static int init_function(void) {
+	set_addr_rw((unsigned long)sys_call_table);
 
+	/* hijack MY_CUSTOM_SYSCALL */
+	orig_custom_syscall = (void *)sys_call_table[MY_CUSTOM_SYSCALL];
+	sys_call_table[MY_CUSTOM_SYSCALL] = my_syscall;
+    printk(KERN_NOTICE "\nHijacked MY_CUSTOM_SYSCALL.\n");
 
+	/* hijack exit_group */
+	orig_exit_group = (void *)sys_call_table[__NR_exit_group];
+	sys_call_table[__NR_exit_group] = my_exit_group;
+    printk(KERN_NOTICE "\nHijacked exit_group.\n");
 
+	set_addr_ro((unsigned long)sys_call_table);
 
-
-
-
+	/* testing if hijacked */
+	syscall(__NR_MY_CUSTOM_SYSCALL, 0, 0, 0);
 	return 0;
 }
 
@@ -419,12 +426,6 @@ static int init_function(void) {
  */
 static void exit_function(void)
 {        
-
-
-
-
-
-
 }
 
 module_init(init_function);
