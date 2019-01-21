@@ -9,10 +9,9 @@ alias hst="history"
 alias rmsw="rm .sw*"
 
 # unalias c
-d() { cd "$@" && ls -a ; }
-alias h="d ~"
-cd_up() { d $(printf "%0.s../" $(seq 1 $1 )) ; }
-alias "d."="cd_up"
+f() { cd "$@" && ls -a ; }
+cd_up() { f $(printf "%0.s../" $(seq 1 $1 )) ; }
+alias "f."="cd_up"
 
 alias n="vim"
 rfnd() { find . -name "$1" ; } 
@@ -25,5 +24,7 @@ alias vb="vim ~/.bash_aliases"
 alias r=". ~/.bashrc"
 
 # a1
-alias a1="d ~/a1"
+alias a1="f ~/a1"
 alias cpc="scp -P 23 -rp ~/.bashrc ~/.bash_aliases ~/.inputrc ~/.vimrc kevin@192.168.0.10:/home/kevin/school/369/a1/vm-config"
+alias m="make"
+alias mc="make clean"
