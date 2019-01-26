@@ -1,8 +1,9 @@
 */ignore
 
-*.vmdk
+*.out
 *.pdf
 *.txt
+*.vmdk
 
 interceptor-vm.c
 test_intercept

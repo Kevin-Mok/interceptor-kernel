@@ -26,7 +26,6 @@ MODULE_LICENSE("GPL");
 /* System Call Table Stuff  {{{ */
 
 /* Symbol that allows access to the kernel system call table */
-// c0598150 R sys_call_table
 extern void* sys_call_table[];
 
 /* The sys_call_table is read-only => must make it RW before replacing a syscall */
@@ -104,8 +103,7 @@ spinlock_t sys_call_table_lock = SPIN_LOCK_UNLOCKED;
  * Add a pid to a syscall's list of monitored pids. 
  * Returns -ENOMEM if the operation is unsuccessful.
  */
-static int add_pid_sysc(pid_t pid, int sysc)
-{
+static int add_pid_sysc(pid_t pid, int sysc) {{{
 	struct pid_list *ple=(struct pid_list*)kmalloc(sizeof(struct pid_list), GFP_KERNEL);
 
 	if (!ple)
@@ -118,14 +116,13 @@ static int add_pid_sysc(pid_t pid, int sysc)
 	table[sysc].listcount++;
 
 	return 0;
-}
+}}}
 
 /**
  * Remove a pid from a system call's list of monitored pids.
  * Returns -EINVAL if no such pid was found in the list.
  */
-static int del_pid_sysc(pid_t pid, int sysc)
-{
+static int del_pid_sysc(pid_t pid, int sysc) {{{
 	struct list_head *i;
 	struct pid_list *ple;
 
@@ -149,14 +146,13 @@ static int del_pid_sysc(pid_t pid, int sysc)
 	}
 
 	return -EINVAL;
-}
+}}}
 
 /**
  * Remove a pid from all the lists of monitored pids (for all intercepted syscalls).
  * Returns -1 if this process is not being monitored in any list.
  */
-/* static int del_pid(pid_t pid)
-{
+static int del_pid(pid_t pid) {{{
 	struct list_head *i, *n;
 	struct pid_list *ple;
 	int ispid = 0, s = 0;
@@ -173,8 +169,8 @@ static int del_pid_sysc(pid_t pid, int sysc)
 				kfree(ple);
 
 				table[s].listcount--;
-				[>If there are no more pids in sysc's list of pids, then
-				 * stop the monitoring only if it's not for all pids (monitored=2)<]
+				/*If there are no more pids in sysc's list of pids, then
+				 * stop the monitoring only if it's not for all pids (monitored=2)*/
 				if(table[s].listcount == 0 && table[s].monitored == 1) {
 					table[s].monitored = 0;
 				}
@@ -184,7 +180,7 @@ static int del_pid_sysc(pid_t pid, int sysc)
 
 	if (ispid) return 0;
 	return -1;
-} */
+}}}
 
 /**
  * Clear the list of monitored pids for a specific syscall.
@@ -211,33 +207,31 @@ static int del_pid_sysc(pid_t pid, int sysc)
  * Remember that when requesting to start monitoring for a pid, only the 
  * owner of that pid is allowed to request that.
  */
-static int check_pids_same_owner(pid_t pid1, pid_t pid2) {
-
+static int check_pids_same_owner(pid_t pid1, pid_t pid2) {{{
 	struct task_struct *p1 = pid_task(find_vpid(pid1), PIDTYPE_PID);
 	struct task_struct *p2 = pid_task(find_vpid(pid2), PIDTYPE_PID);
 	if(p1->real_cred->uid != p2->real_cred->uid)
 		return -EPERM;
 	return 0;
-}
+}}}
 
 /**
  * Check if a pid is already being monitored for a specific syscall.
  * Returns 1 if it already is, or 0 if pid is not in sysc's list.
  */
-/* static int check_pid_monitored(int sysc, pid_t pid) {
-
+static int check_pid_monitored(int sysc, pid_t pid) {{{
 	struct list_head *i;
 	struct pid_list *ple;
 
 	list_for_each(i, &(table[sysc].my_list)) {
 
 		ple=list_entry(i, struct pid_list, list);
-		if(ple->pid == pid) 
+		if(ple->pid == pid)
 			return 1;
-		
+
 	}
-	return 0;	
-} */
+	return 0;
+}}}
 
 /* }}} LIST OPERATIONS */
 
@@ -258,21 +252,23 @@ asmlinkage long (*orig_exit_group)(struct pt_regs reg);
 
 /**
  * Our custom exit_group system call.
- *
+ * done {{{
  * TODO: When a process exits, make sure to remove that pid from all lists.
  * The exiting process's PID can be retrieved using the current variable (current->pid).
  * Don't forget to call the original exit_group.
  *
  * Note: using printk in this function will potentially result in errors!
- *
+ * }}}
  */
-asmlinkage long my_exit_group(struct pt_regs reg)
-{
+asmlinkage long my_exit_group(struct pt_regs reg) {{{
 	/* using printk in this function will potentially result in errors! */
     /* printk(KERN_DEBUG "\nThis is my_exit_group.\n"); */
 	/* return 0; */
+	spin_lock(&my_table_lock);
+	del_pid(current->pid);
+	spin_unlock(&my_table_lock);
 	return orig_exit_group(reg);
-}
+}}}
 
 /* }}} Intercepting exit_group  */
 
@@ -301,7 +297,9 @@ asmlinkage long interceptor(struct pt_regs reg) {
 	int ret;
 	printk(KERN_DEBUG "%sCalled my interceptor function for %lx.", MY_LOG_HEADER, reg.ax);
 	log_message(current->pid, reg.ax, reg.ax, reg.bx, reg.cx, reg.dx, reg.si, reg.di);
+	spin_lock(&my_table_lock);
 	ret = table[reg.ax].f(reg);
+	spin_unlock(&my_table_lock);
 	printk(KERN_DEBUG "%sOriginal system call returned with %d.", MY_LOG_HEADER, ret);
 	return ret; // Just a placeholder, so it compiles with no warnings!
 }
@@ -397,12 +395,21 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 			if (table[syscall].intercepted == 1) {
 				return -EBUSY;	
 			}
-			table[syscall].f = sys_call_table[syscall];
+			/* acquire sys_call_table_lock, make it writable and replace syscall */
+			spin_lock(&sys_call_table_lock);
 			set_addr_rw((unsigned long)sys_call_table);
 			sys_call_table[syscall] = interceptor;
 			set_addr_ro((unsigned long)sys_call_table);
-			printk(KERN_NOTICE "%sHijacked %d.", MY_LOG_HEADER, syscall);
+			spin_unlock(&sys_call_table_lock);
+
+			/* acquire my_table_lock, store original syscall and indicate
+			 * intercepted */
+			spin_lock(&my_table_lock);
+			table[syscall].f = sys_call_table[syscall];
 			table[syscall].intercepted = 1;
+			spin_unlock(&my_table_lock);
+
+			printk(KERN_NOTICE "%sHijacked %d.", MY_LOG_HEADER, syscall);
 			break;
 		
 		/* }}} REQUEST_SYSCALL_INTERCEPT */
@@ -412,31 +419,44 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 			if (table[syscall].intercepted == 0) {
 				return -EINVAL;	
 			}
+			/* acquire sys_call_table_lock, make it writable and restore syscall */
+			spin_lock(&sys_call_table_lock);
 			set_addr_rw((unsigned long)sys_call_table);
 			sys_call_table[syscall] = table[syscall].f;
 			set_addr_ro((unsigned long)sys_call_table);
-			printk(KERN_NOTICE "%sReleased %d.", MY_LOG_HEADER, syscall);
+			spin_unlock(&sys_call_table_lock);
+
+			/* acquire my_table_lock and indicate not intercepted */
+			spin_lock(&my_table_lock);
 			table[syscall].intercepted = 0;
+			spin_unlock(&my_table_lock);
+
+			printk(KERN_NOTICE "%sReleased %d.", MY_LOG_HEADER, syscall);
 			break;
 		
 		/* }}} REQUEST_SYSCALL_RELEASE */
 		/* REQUEST_START_MONITORING {{{ */
 		
 		case REQUEST_START_MONITORING:
-			if (table[syscall].monitored == 1) {
+			if (check_pid_monitored(syscall, pid) == 1) {
 				return -EBUSY;
 			}
+			spin_lock(&my_table_lock);
 			add_pid_sysc(pid, syscall);
+			spin_unlock(&my_table_lock);
 			break;
 		
 		/* }}} */
 		/* REQUEST_STOP_MONITORING {{{ */
 		
 		case REQUEST_STOP_MONITORING:
-			if (table[syscall].intercepted == 0 || table[syscall].monitored == 0) {
+			if (table[syscall].intercepted == 0 ||
+					check_pid_monitored(syscall, pid) == 0) {
 				return -EINVAL;	
 			}
+			spin_lock(&my_table_lock);
 			del_pid_sysc(pid, syscall);
+			spin_unlock(&my_table_lock);
 			break;
 		
 		/* }}} */
@@ -453,8 +473,8 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 /* hijack_pt_regs_syscall {{{ */
 
 /* TODO: when to use static? */
-void hijack_pt_regs_syscall(long (*old_syscall)(struct pt_regs), int syscall, long (*new_syscall)(struct pt_regs)) {
-/* void hijack_pt_regs_syscall(void *old_syscall, int syscall, void *new_syscall) { */
+/* void hijack_pt_regs_syscall(long (*old_syscall)(struct pt_regs), int syscall, long (*new_syscall)(struct pt_regs)) {
+[>void hijack_pt_regs_syscall(void *old_syscall, int syscall, void *new_syscall) {<]
 	set_addr_rw((unsigned long)sys_call_table);
 
 	old_syscall = sys_call_table[syscall];
@@ -462,7 +482,7 @@ void hijack_pt_regs_syscall(long (*old_syscall)(struct pt_regs), int syscall, lo
     printk(KERN_NOTICE "%sHijacked syscall %d.", MY_LOG_HEADER, syscall);
 
 	set_addr_ro((unsigned long)sys_call_table);
-}
+} */
 
 /* }}} hijack_pt_regs_syscall */
 
@@ -492,26 +512,56 @@ long (*orig_custom_syscall)(void);
 
 /* }}} instr. */
 static int init_function(void) {
-	set_addr_rw((unsigned long)sys_call_table);
+	/* old {{{ */
+	
+	/* spin_lock(sys_call_table_lock);
+	set_addr_rw((unsigned long)sys_call_table); */
 
 	/* hijack MY_CUSTOM_SYSCALL */
-	orig_custom_syscall = (void *)sys_call_table[MY_CUSTOM_SYSCALL];
+	/* orig_custom_syscall = (void *)sys_call_table[MY_CUSTOM_SYSCALL];
 	sys_call_table[MY_CUSTOM_SYSCALL] = my_syscall;
 	printk(KERN_NOTICE "%sHijacked MY_CUSTOM_SYSCALL.", MY_LOG_HEADER);
-	table[MY_CUSTOM_SYSCALL].intercepted = 1;
+	table[MY_CUSTOM_SYSCALL].intercepted = 1; */
 	/* hijack_pt_regs_syscall(orig_exit_group, __NR_exit_group, my_exit_group); */
 
 	/* hijack exit_group */
-	orig_exit_group = (void *)sys_call_table[__NR_exit_group];
+	/* orig_exit_group = (void *)sys_call_table[__NR_exit_group];
 	sys_call_table[__NR_exit_group] = my_exit_group;
 	printk(KERN_NOTICE "%sHijacked exit_group.", MY_LOG_HEADER);
-	table[__NR_exit_group].intercepted = 1;
+	table[__NR_exit_group].intercepted = 1; */
 	/* hijack_pt_regs_syscall(orig_exit_group, __NR_exit_group, my_exit_group); */
 
-	set_addr_ro((unsigned long)sys_call_table);
+	/* set_addr_ro((unsigned long)sys_call_table);
+	spin_unlock(sys_call_table_lock); */
+	
+	/* }}} old */
 
-	/* testing if hijacked */
-	/* syscall(__NR_MY_CUSTOM_SYSCALL, 0, 0, 0); */
+	orig_custom_syscall = sys_call_table[MY_CUSTOM_SYSCALL];
+	orig_exit_group = sys_call_table[__NR_exit_group];
+
+	/* acquire sys_call_table_lock, make it writable and replace
+	 * MY_CUSTOM_SYSCALL and exit_group {{{ */
+	spin_lock(&sys_call_table_lock);
+	set_addr_rw((unsigned long)sys_call_table);
+
+	sys_call_table[MY_CUSTOM_SYSCALL] = my_syscall;
+	sys_call_table[__NR_exit_group] = my_exit_group;
+
+	set_addr_ro((unsigned long)sys_call_table);
+	spin_unlock(&sys_call_table_lock);
+
+	/* }}} */
+
+	/* acquire my_table_lock and indicate MY_CUSTOM_SYSCALL and exit_group
+	 * intercepted {{{ */
+	spin_lock(&my_table_lock);
+	table[MY_CUSTOM_SYSCALL].intercepted = 1;
+	table[__NR_exit_group].intercepted = 1;
+	spin_unlock(&my_table_lock);
+	/* }}} */
+
+	printk(KERN_NOTICE "%sHijacked MY_CUSTOM_SYSCALL and exit_group.", MY_LOG_HEADER);
+
 	return 0;
 }
 
@@ -531,6 +581,7 @@ static int init_function(void) {
  */
 static void exit_function(void)
 {        
+	spin_lock(&sys_call_table_lock);
 	set_addr_rw((unsigned long)sys_call_table);
 
 	sys_call_table[MY_CUSTOM_SYSCALL] = orig_custom_syscall;
@@ -541,6 +592,7 @@ static void exit_function(void)
 	table[__NR_exit_group].intercepted = 0;
 
 	set_addr_ro((unsigned long)sys_call_table);
+	spin_unlock(&sys_call_table_lock);
 }
 
 module_init(init_function);
