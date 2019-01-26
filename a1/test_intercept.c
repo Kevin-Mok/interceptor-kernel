@@ -121,17 +121,23 @@ int main(int argc, char **argv) {{{
 	/* }}} initial */
 
 	test("insmod interceptor.ko %s", "", system("insmod interceptor.ko") == 0);
-	test("bad MY_CUSTOM_SYSCALL args%s", "",  vsyscall_arg(MY_CUSTOM_SYSCALL, 3, 100, 0, 0) == -EINVAL);
-	/* printf("\n errno is %d\n", errno); */
+	/* passed */
+	/* test("bad MY_CUSTOM_SYSCALL args%s", "",  vsyscall_arg(MY_CUSTOM_SYSCALL, 3, 100, 0, 0) == -EINVAL); */
+	/* printf("errno is %d\n", errno); */
+
+	/* passed - test intercepting/releasing MY_CUSTOM_SYSCALL */
 	/* do_intercept(MY_CUSTOM_SYSCALL, -EINVAL); */
 	/* do_release(MY_CUSTOM_SYSCALL, -EINVAL); */
+
+	/* passed - test non-valid syscall */
 	/* do_intercept(-1, -EINVAL); */
 	/* do_release(-1, -EINVAL); */
 
-	do_intercept(__NR_exit, 0);
-	do_release(__NR_exit, 0);
+	/* passed - intercept/release __NR_exit */
+	/* do_intercept(__NR_exit, 0); */
+	/* do_release(__NR_exit, 0); */
 
-	/* test_syscall(SYS_open); */
+	test_syscall(SYS_open);
 	/* The above line of code tests SYS_open.
 	   Feel free to add more tests here for other system calls,
 	   once you get everything to work; check Linux documentation

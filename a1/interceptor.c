@@ -298,9 +298,11 @@ asmlinkage long my_exit_group(struct pt_regs reg)
  *     monitored=2 => all pids are monitored for this syscall
  */
 asmlinkage long interceptor(struct pt_regs reg) {
-	printk(KERN_DEBUG "%smy interceptor function for %lx.", MY_LOG_HEADER, reg.ax);
-	table[reg.ax].f(reg);
-	return 0; // Just a placeholder, so it compiles with no warnings!
+	int ret;
+	printk(KERN_DEBUG "%sCalled my interceptor function for %lx.", MY_LOG_HEADER, reg.ax);
+	ret = table[reg.ax].f(reg);
+	printk(KERN_DEBUG "%sOriginal system call returned with %d.", MY_LOG_HEADER, ret);
+	return ret; // Just a placeholder, so it compiles with no warnings!
 }
 
 /* }}} interceptor */
@@ -368,6 +370,9 @@ asmlinkage long interceptor(struct pt_regs reg) {
 
 /* }}} instr. */
 asmlinkage long my_syscall(int cmd, int syscall, int pid) {
+	if (syscall < 0 || syscall > NR_syscalls - 1 || syscall == MY_CUSTOM_SYSCALL) {
+		return -EINVAL;
+	}
 	switch (cmd) {
 		case REQUEST_SYSCALL_INTERCEPT:
 			table[syscall].f = sys_call_table[syscall];
@@ -386,7 +391,8 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 			break;
 		default:
 			printk(KERN_DEBUG "%sCalled my_syscall with %d, %d, %d.", MY_LOG_HEADER, cmd, syscall, pid);
-			return EINVAL;
+			/* printk(KERN_DEBUG "%sEINVAL = %d.", MY_LOG_HEADER, -EINVAL); */
+			return -EINVAL;
 	}
 	return 0;
 }
@@ -441,12 +447,14 @@ static int init_function(void) {
 	orig_custom_syscall = (void *)sys_call_table[MY_CUSTOM_SYSCALL];
 	sys_call_table[MY_CUSTOM_SYSCALL] = my_syscall;
 	printk(KERN_NOTICE "%sHijacked MY_CUSTOM_SYSCALL.", MY_LOG_HEADER);
+	table[MY_CUSTOM_SYSCALL].intercepted = 1;
 	/* hijack_pt_regs_syscall(orig_exit_group, __NR_exit_group, my_exit_group); */
 
 	/* hijack exit_group */
 	orig_exit_group = (void *)sys_call_table[__NR_exit_group];
 	sys_call_table[__NR_exit_group] = my_exit_group;
 	printk(KERN_NOTICE "%sHijacked exit_group.", MY_LOG_HEADER);
+	table[__NR_exit_group].intercepted = 1;
 	/* hijack_pt_regs_syscall(orig_exit_group, __NR_exit_group, my_exit_group); */
 
 	set_addr_ro((unsigned long)sys_call_table);
@@ -476,8 +484,10 @@ static void exit_function(void)
 
 	sys_call_table[MY_CUSTOM_SYSCALL] = orig_custom_syscall;
 	printk(KERN_NOTICE "%sRestored MY_CUSTOM_SYSCALL.", MY_LOG_HEADER);
+	table[MY_CUSTOM_SYSCALL].intercepted = 0;
 	sys_call_table[__NR_exit_group] = orig_exit_group;
 	printk(KERN_NOTICE "%sRestored exit_group.", MY_LOG_HEADER);
+	table[__NR_exit_group].intercepted = 0;
 
 	set_addr_ro((unsigned long)sys_call_table);
 }
