@@ -3,3 +3,6 @@
 *.vmdk
 *.pdf
 *.txt
+
+interceptor-vm.c
+test_intercept
