@@ -6,3 +6,4 @@
 
 interceptor-vm.c
 test_intercept
+test_full

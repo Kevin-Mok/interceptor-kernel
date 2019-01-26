@@ -104,7 +104,7 @@ spinlock_t sys_call_table_lock = SPIN_LOCK_UNLOCKED;
  * Add a pid to a syscall's list of monitored pids. 
  * Returns -ENOMEM if the operation is unsuccessful.
  */
-/* static int add_pid_sysc(pid_t pid, int sysc)
+static int add_pid_sysc(pid_t pid, int sysc)
 {
 	struct pid_list *ple=(struct pid_list*)kmalloc(sizeof(struct pid_list), GFP_KERNEL);
 
@@ -118,7 +118,7 @@ spinlock_t sys_call_table_lock = SPIN_LOCK_UNLOCKED;
 	table[sysc].listcount++;
 
 	return 0;
-} */
+}
 
 /**
  * Remove a pid from a system call's list of monitored pids.
@@ -300,6 +300,7 @@ asmlinkage long my_exit_group(struct pt_regs reg)
 asmlinkage long interceptor(struct pt_regs reg) {
 	int ret;
 	printk(KERN_DEBUG "%sCalled my interceptor function for %lx.", MY_LOG_HEADER, reg.ax);
+	log_message(current->pid, reg.ax, reg.ax, reg.bx, reg.cx, reg.dx, reg.si, reg.di);
 	ret = table[reg.ax].f(reg);
 	printk(KERN_DEBUG "%sOriginal system call returned with %d.", MY_LOG_HEADER, ret);
 	return ret; // Just a placeholder, so it compiles with no warnings!
@@ -370,12 +371,18 @@ asmlinkage long interceptor(struct pt_regs reg) {
 
 /* }}} instr. */
 asmlinkage long my_syscall(int cmd, int syscall, int pid) {
+	/* error checking args {{{ */
+	
 	if (syscall < 0 || syscall > NR_syscalls - 1 || syscall == MY_CUSTOM_SYSCALL) {
 		return -EINVAL;
 	} else if ((cmd == REQUEST_SYSCALL_RELEASE || cmd == REQUEST_SYSCALL_INTERCEPT) && current_uid() != 0) {
 		return -EPERM;
 	}
+	
+	/* }}} error checking args */
 	switch (cmd) {
+		/* REQUEST_SYSCALL_INTERCEPT {{{ */
+		
 		case REQUEST_SYSCALL_INTERCEPT:
 			if (table[syscall].intercepted == 1) {
 				return -EBUSY;	
@@ -387,6 +394,10 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 			printk(KERN_NOTICE "%sHijacked %d.", MY_LOG_HEADER, syscall);
 			table[syscall].intercepted = 1;
 			break;
+		
+		/* }}} REQUEST_SYSCALL_INTERCEPT */
+		/* REQUEST_SYSCALL_RELEASE {{{ */
+		
 		case REQUEST_SYSCALL_RELEASE:
 			set_addr_rw((unsigned long)sys_call_table);
 			sys_call_table[syscall] = table[syscall].f;
@@ -394,6 +405,15 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 			printk(KERN_NOTICE "%sReleased %d.", MY_LOG_HEADER, syscall);
 			table[syscall].intercepted = 0;
 			break;
+		
+		/* }}} REQUEST_SYSCALL_RELEASE */
+		/* REQUEST_START_MONITORING {{{ */
+		
+		case REQUEST_START_MONITORING:
+			add_pid_sysc(pid, syscall);
+			break;
+		
+		/* }}} */
 		default:
 			printk(KERN_DEBUG "%sCalled my_syscall with %d, %d, %d.", MY_LOG_HEADER, cmd, syscall, pid);
 			/* printk(KERN_DEBUG "%sEINVAL = %d.", MY_LOG_HEADER, -EINVAL); */

@@ -1,3 +1,5 @@
+/* include {{{ */
+
 #include <errno.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -13,10 +15,11 @@
 #include <assert.h>
 #include "interceptor.h"
 
+/* }}} include */
 
 static int last_child;
 
-int vsyscall_arg(int sno, int n, ...) {
+int vsyscall_arg(int sno, int n, ...) {{{
 
 	va_list va;
 	long args[6];
@@ -31,10 +34,10 @@ int vsyscall_arg(int sno, int n, ...) {
 	ret = syscall(sno, args[0], args[1], args[2]);
 	if(ret) ret = -errno;
 	return ret;
-}
+}}}
 
 #define test(s, a, t) \
-({\
+({{{\
 	int i;\
 	char dummy[1024];\
 	\
@@ -47,17 +50,16 @@ int vsyscall_arg(int sno, int n, ...) {
 	else\
 		printf("passed\n");\
 	fflush(stdout);\
-})
+}}})
 
-
-void clear_log() {
+void clear_log() {{{
 	system("dmesg -c &> /dev/null");
-}
+}}}
 
 /** 
  * Check if the log contains what is expected - if log_message was done properly 
  */
-int find_log(long pid, long sno, long *args, long ret) {
+int find_log(long pid, long sno, long *args, long ret) {{{
 	char message[1024], command[1024], output[1024];
 	FILE *fp;
 
@@ -78,12 +80,12 @@ int find_log(long pid, long sno, long *args, long ret) {
 
 	pclose(fp);
 	return -1;
-}
+}}}
 
 /** 
  * Check if a syscall gets logged properly when it's been already intercepted
  */
-int do_monitor(int sysno) {
+int do_monitor(int sysno) {{{
 	int sno, ret, i;
 	long args[6];
 	
@@ -100,38 +102,34 @@ int do_monitor(int sysno) {
 
 	test("%d nonroot monitor", sysno, find_log(getpid(), (long)sno, args, (long)ret) == 0);
 	return 0;
-}
+}}}
 
-
-int do_intercept(int syscall, int status) {
+int do_intercept(int syscall, int status) {{{
 	test("%d intercept", syscall, vsyscall_arg(MY_CUSTOM_SYSCALL, 3, REQUEST_SYSCALL_INTERCEPT, syscall, getpid()) == status);
 	return 0;
-}
+}}}
 
-
-int do_release(int syscall, int status) {
+int do_release(int syscall, int status) {{{
 	test("%d release", syscall, vsyscall_arg(MY_CUSTOM_SYSCALL, 3, REQUEST_SYSCALL_RELEASE, syscall, getpid()) == status);
 	return 0;
-}
+}}}
 
-
-int do_start(int syscall, int pid, int status) {
+int do_start(int syscall, int pid, int status) {{{
 	if (pid == -1)
 		pid=getpid();
 	test("%d start", syscall, vsyscall_arg(MY_CUSTOM_SYSCALL, 3, REQUEST_START_MONITORING, syscall, pid) == status);
 	return 0;
-}
+}}}
 
-int do_stop(int syscall, int pid, int status) {
+int do_stop(int syscall, int pid, int status) {{{
 	test("%d stop", syscall, vsyscall_arg(MY_CUSTOM_SYSCALL, 3, REQUEST_STOP_MONITORING, syscall, pid) == status);
 	return 0;
-}
-
+}}}
 
 /** 
  * Run the tester as a non-root user, and basically run do_nonroot
  */
-void do_as_guest(const char *str, int args1, int args2) {
+void do_as_guest(const char *str, int args1, int args2) {{{
 
 	char cmd[1024];
 	char cmd2[1024];
@@ -148,9 +146,9 @@ void do_as_guest(const char *str, int args1, int args2) {
 		default:
 			waitpid(last_child, NULL, 0);
 	}
-}
+}}}
 
-int do_nonroot(int syscall) {
+int do_nonroot(int syscall) {{{
 	do_intercept(syscall, -EPERM);
 	do_release(syscall, -EPERM);
 	do_start(syscall, 0, -EPERM);
@@ -163,10 +161,9 @@ int do_nonroot(int syscall) {
 	do_stop(syscall, getpid(), 0);
 	do_stop(syscall, getpid(), -EINVAL);
 	return 0;
-}
+}}}
 
-
-void test_syscall(int syscall) {
+void test_syscall(int syscall) {{{
 
 	//clear_log();
 	do_intercept(syscall, 0);
@@ -181,11 +178,12 @@ void test_syscall(int syscall) {
 	do_as_guest("./test_full start %d -1 %d", syscall, 0);
 	do_stop(syscall, last_child, -EINVAL);
 	do_release(syscall, 0);
-}
+}}}
 
+int main(int argc, char **argv) {{{
 
-int main(int argc, char **argv) {
-
+	/* setup {{{ */
+	
 	srand(time(NULL));
 
 	if (argc>1 && strcmp(argv[1], "intercept") == 0) 
@@ -205,16 +203,28 @@ int main(int argc, char **argv) {
 
 	if (argc>1 && strcmp(argv[1], "nonroot") == 0)
 		return do_nonroot(atoi(argv[2]));
+	
+	/* }}} setup */
 
 	test("insmod interceptor.ko %s", "", system("insmod interceptor.ko") == 0);
-	test("bad MY_SYSCALL args%s", "",  vsyscall_arg(MY_CUSTOM_SYSCALL, 3, 100, 0, 0) == -EINVAL);
-	do_intercept(MY_CUSTOM_SYSCALL, -EINVAL);
-	do_release(MY_CUSTOM_SYSCALL, -EINVAL);
-	do_intercept(-1, -EINVAL);
-	do_release(-1, -EINVAL);
-	do_intercept(__NR_exit, 0);
-	do_release(__NR_exit, 0);
 
+	/* passed */
+	/* test("bad MY_CUSTOM_SYSCALL args%s", "",  vsyscall_arg(MY_CUSTOM_SYSCALL, 3, 100, 0, 0) == -EINVAL); */
+	/* printf("errno is %d\n", errno); */
+
+	/* passed - test intercepting/releasing MY_CUSTOM_SYSCALL */
+	/* do_intercept(MY_CUSTOM_SYSCALL, -EINVAL); */
+	/* do_release(MY_CUSTOM_SYSCALL, -EINVAL); */
+
+	/* test non-valid syscall */
+	/* do_intercept(-1, -EINVAL); */
+	/* do_release(-1, -EINVAL); */
+
+	/* intercept/release __NR_exit */
+	/* do_intercept(__NR_exit, 0); */
+	/* do_release(__NR_exit, 0); */
+
+	/* intercept/release SYS_open, checks busy */
 	test_syscall(SYS_open);
 	/* The above line of code tests SYS_open.
 	   Feel free to add more tests here for other system calls, 
@@ -223,5 +233,5 @@ int main(int argc, char **argv) {
 
 	test("rmmod interceptor.ko %s", "", system("rmmod interceptor") == 0);
 	return 0;
-}
+}}}
 

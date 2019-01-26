@@ -41,10 +41,11 @@ alias mc="make clean"
 # testing
 #alias dm="dmesg | grep 369-a1 | tail -n 25"
 alias dm="dmesg | grep 369-a1"
-alias dmlt="dmesg | tail -n 1 | sed 's/\[ \([0-9]\+\)\..*/\1/'"
-function dmt() { dmesg | grep $1\\. ; }
+alias dmlt="dmesg | tail -n 1 | sed 's/\[ \{0,1\}\([0-9]\+\)\..*/\1/'"
+function dmt() { cs && dmesg | grep $1\\. ; }
 #function dmt() { dmesg | grep "$1" ; }
 alias in="sudo insmod interceptor.ko && dm"
 alias rmm="sudo rmmod interceptor.ko && dm"
 #alias t="cd ~/a1 && m && sudo ./test_intercept && dm"
-alias t="cd ~/a1 && m && sudo ./test_intercept"
+#alias t="cd ~/a1 && m && sudo ./test_intercept"
+alias t="cd ~/a1 && m && sudo ./test_full"
