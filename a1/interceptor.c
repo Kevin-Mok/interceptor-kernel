@@ -124,7 +124,7 @@ static int add_pid_sysc(pid_t pid, int sysc)
  * Remove a pid from a system call's list of monitored pids.
  * Returns -EINVAL if no such pid was found in the list.
  */
-/* static int del_pid_sysc(pid_t pid, int sysc)
+static int del_pid_sysc(pid_t pid, int sysc)
 {
 	struct list_head *i;
 	struct pid_list *ple;
@@ -138,8 +138,8 @@ static int add_pid_sysc(pid_t pid, int sysc)
 			kfree(ple);
 
 			table[sysc].listcount--;
-			[>If there are no more pids in sysc's list of pids, then
-			 * stop the monitoring only if it's not for all pids (monitored=2)<]
+			/*If there are no more pids in sysc's list of pids, then
+			 * stop the monitoring only if it's not for all pids (monitored=2)*/
 			if(table[sysc].listcount == 0 && table[sysc].monitored == 1) {
 				table[sysc].monitored = 0;
 			}
@@ -149,7 +149,7 @@ static int add_pid_sysc(pid_t pid, int sysc)
 	}
 
 	return -EINVAL;
-} */
+}
 
 /**
  * Remove a pid from all the lists of monitored pids (for all intercepted syscalls).
@@ -211,14 +211,14 @@ static int add_pid_sysc(pid_t pid, int sysc)
  * Remember that when requesting to start monitoring for a pid, only the 
  * owner of that pid is allowed to request that.
  */
-/* static int check_pids_same_owner(pid_t pid1, pid_t pid2) {
+static int check_pids_same_owner(pid_t pid1, pid_t pid2) {
 
 	struct task_struct *p1 = pid_task(find_vpid(pid1), PIDTYPE_PID);
 	struct task_struct *p2 = pid_task(find_vpid(pid2), PIDTYPE_PID);
 	if(p1->real_cred->uid != p2->real_cred->uid)
 		return -EPERM;
 	return 0;
-} */
+}
 
 /**
  * Check if a pid is already being monitored for a specific syscall.
@@ -325,6 +325,7 @@ asmlinkage long interceptor(struct pt_regs reg) {
  *
  * check for valid arguments {{{ */
 /*
+ * done {{{
  * - For each of the commands, check that the arguments are valid (-EINVAL):
  *   a) the syscall must be valid (not negative, not > NR_syscalls-1, and not MY_CUSTOM_SYSCALL itself)
  *   b) the pid must be valid for the last two commands. It cannot be a negative integer, 
@@ -347,6 +348,7 @@ asmlinkage long interceptor(struct pt_regs reg) {
  * - Check for -EBUSY conditions:
  *     a) If intercepting a system call that is already intercepted.
  *     b) If monitoring a pid that is already being monitored.
+ * done }}}
  * - If a pid cannot be added to a monitored list, due to no memory being available,
  *   an -ENOMEM error code should be returned.
  */
@@ -373,9 +375,17 @@ asmlinkage long interceptor(struct pt_regs reg) {
 asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 	/* error checking args {{{ */
 	
-	if (syscall < 0 || syscall > NR_syscalls - 1 || syscall == MY_CUSTOM_SYSCALL) {
+	/* check for valid syscall and existing pid */
+	if (syscall < 0 ||
+			syscall > NR_syscalls - 1 ||
+			syscall == MY_CUSTOM_SYSCALL ||
+			pid_task(find_vpid(pid), PIDTYPE_PID) == NULL) {
 		return -EINVAL;
-	} else if ((cmd == REQUEST_SYSCALL_RELEASE || cmd == REQUEST_SYSCALL_INTERCEPT) && current_uid() != 0) {
+	/* if not root, check if first 2 commands, monitoring all pid's or if own pid */
+	} else if (current_uid() != 0 && (cmd == REQUEST_SYSCALL_RELEASE ||
+				cmd == REQUEST_SYSCALL_INTERCEPT || 
+				pid == 0 ||
+				check_pids_same_owner(current->pid, pid) != 0)) {
 		return -EPERM;
 	}
 	
@@ -399,6 +409,9 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 		/* REQUEST_SYSCALL_RELEASE {{{ */
 		
 		case REQUEST_SYSCALL_RELEASE:
+			if (table[syscall].intercepted == 0) {
+				return -EINVAL;	
+			}
 			set_addr_rw((unsigned long)sys_call_table);
 			sys_call_table[syscall] = table[syscall].f;
 			set_addr_ro((unsigned long)sys_call_table);
@@ -410,7 +423,20 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 		/* REQUEST_START_MONITORING {{{ */
 		
 		case REQUEST_START_MONITORING:
+			if (table[syscall].monitored == 1) {
+				return -EBUSY;
+			}
 			add_pid_sysc(pid, syscall);
+			break;
+		
+		/* }}} */
+		/* REQUEST_STOP_MONITORING {{{ */
+		
+		case REQUEST_STOP_MONITORING:
+			if (table[syscall].intercepted == 0 || table[syscall].monitored == 0) {
+				return -EINVAL;	
+			}
+			del_pid_sysc(pid, syscall);
 			break;
 		
 		/* }}} */
