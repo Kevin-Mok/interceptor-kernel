@@ -178,4 +178,4 @@ export QSYS_ROOTDIR="/home/kevin/usr/altera_lite/16.0/quartus/sopc_builder/bin"
 export EDITOR='vim'
 export VISUAL='vim'
 
-sudo start ssh
+sudo restart ssh

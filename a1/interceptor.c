@@ -372,9 +372,14 @@ asmlinkage long interceptor(struct pt_regs reg) {
 asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 	if (syscall < 0 || syscall > NR_syscalls - 1 || syscall == MY_CUSTOM_SYSCALL) {
 		return -EINVAL;
+	} else if ((cmd == REQUEST_SYSCALL_RELEASE || cmd == REQUEST_SYSCALL_INTERCEPT) && current_uid() != 0) {
+		return -EPERM;
 	}
 	switch (cmd) {
 		case REQUEST_SYSCALL_INTERCEPT:
+			if (table[syscall].intercepted == 1) {
+				return -EBUSY;	
+			}
 			table[syscall].f = sys_call_table[syscall];
 			set_addr_rw((unsigned long)sys_call_table);
 			sys_call_table[syscall] = interceptor;
