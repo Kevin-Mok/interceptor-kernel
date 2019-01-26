@@ -1,16 +1,17 @@
 /* include {{{ */
 
-#include <linux/kernel.h>
-#include <linux/init.h>
-#include <linux/module.h>
 #include <asm/current.h>
 #include <asm/ptrace.h>
-#include <linux/sched.h>
-#include <linux/cred.h>
 #include <asm/unistd.h>
-#include <linux/spinlock.h>
+#include <linux/cred.h>
+#include <linux/init.h>
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/sched.h>
 #include <linux/semaphore.h>
+#include <linux/spinlock.h>
 #include <linux/syscalls.h>
+
 #include "interceptor.h"
 
 /* }}} include */
@@ -20,6 +21,9 @@
 MODULE_DESCRIPTION("Kevin's Kernel Module");
 MODULE_AUTHOR("Kevin Mok");
 MODULE_LICENSE("GPL");
+
+/* #define MY_LOG_HEADER "369-a1: " */
+#define MY_LOG_HEADER ""
 
 /* }}} module description */
 
@@ -159,22 +163,28 @@ static int del_pid(pid_t pid) {{{
 
 	for(s = 1; s < NR_syscalls; s++) {
 
+		printk(KERN_DEBUG "%ssyscall %d has %d monitored pid's.",
+				MY_LOG_HEADER, s, table[s].listcount);
+		/* printk(KERN_DEBUG "%ssyscall %d's list_head is at %p.",
+				MY_LOG_HEADER, s, &(table[s].my_list)); */
 		list_for_each_safe(i, n, &(table[s].my_list)) {
+		/* list_for_each(i, &(table[s].my_list)) { */
 
-			ple=list_entry(i, struct pid_list, list);
+			/* ple=list_entry(i, struct pid_list, list);
 			if(ple->pid == pid) {
 
+				printk(KERN_DEBUG "%sFound %d in syscall %d's list.", MY_LOG_HEADER, pid, s);
 				list_del(i);
 				ispid = 1;
 				kfree(ple);
 
-				table[s].listcount--;
-				/*If there are no more pids in sysc's list of pids, then
-				 * stop the monitoring only if it's not for all pids (monitored=2)*/
+				table[s].listcount--; */
+				/* If there are no more pids in sysc's list of pids, then
+				stop the monitoring only if it's not for all pids (monitored=2)
 				if(table[s].listcount == 0 && table[s].monitored == 1) {
 					table[s].monitored = 0;
 				}
-			}
+			} */
 		}
 	}
 
@@ -264,17 +274,17 @@ asmlinkage long my_exit_group(struct pt_regs reg) {{{
 	/* using printk in this function will potentially result in errors! */
     /* printk(KERN_DEBUG "\nThis is my_exit_group.\n"); */
 	/* return 0; */
-	spin_lock(&my_table_lock);
+	/* spin_lock(&my_table_lock);
+	printk(KERN_DEBUG "%sWant to remove %x from all lists.",
+			MY_LOG_HEADER, current->pid);
 	del_pid(current->pid);
-	spin_unlock(&my_table_lock);
+	spin_unlock(&my_table_lock); */
 	return orig_exit_group(reg);
 }}}
 
 /* }}} Intercepting exit_group  */
 
 /* interceptor {{{ */
-
-#define MY_LOG_HEADER "369-a1: "
 
 /** 
  * This is the generic interceptor function.
@@ -297,9 +307,7 @@ asmlinkage long interceptor(struct pt_regs reg) {
 	int ret;
 	printk(KERN_DEBUG "%sCalled my interceptor function for %lx.", MY_LOG_HEADER, reg.ax);
 	log_message(current->pid, reg.ax, reg.ax, reg.bx, reg.cx, reg.dx, reg.si, reg.di);
-	spin_lock(&my_table_lock);
 	ret = table[reg.ax].f(reg);
-	spin_unlock(&my_table_lock);
 	printk(KERN_DEBUG "%sOriginal system call returned with %d.", MY_LOG_HEADER, ret);
 	return ret; // Just a placeholder, so it compiles with no warnings!
 }
@@ -514,7 +522,7 @@ long (*orig_custom_syscall)(void);
 static int init_function(void) {
 	/* old {{{ */
 	
-	/* spin_lock(sys_call_table_lock);
+	/* spin_lock(&sys_call_table_lock);
 	set_addr_rw((unsigned long)sys_call_table); */
 
 	/* hijack MY_CUSTOM_SYSCALL */
@@ -532,7 +540,7 @@ static int init_function(void) {
 	/* hijack_pt_regs_syscall(orig_exit_group, __NR_exit_group, my_exit_group); */
 
 	/* set_addr_ro((unsigned long)sys_call_table);
-	spin_unlock(sys_call_table_lock); */
+	spin_unlock(&sys_call_table_lock); */
 	
 	/* }}} old */
 
@@ -581,7 +589,9 @@ static int init_function(void) {
  */
 static void exit_function(void)
 {        
-	spin_lock(&sys_call_table_lock);
+	/* old {{{ */
+	
+	/* spin_lock(&sys_call_table_lock);
 	set_addr_rw((unsigned long)sys_call_table);
 
 	sys_call_table[MY_CUSTOM_SYSCALL] = orig_custom_syscall;
@@ -592,7 +602,35 @@ static void exit_function(void)
 	table[__NR_exit_group].intercepted = 0;
 
 	set_addr_ro((unsigned long)sys_call_table);
+	spin_unlock(&sys_call_table_lock); */
+	
+	/* }}} old */
+
+	/* acquire sys_call_table_lock, make it writable and restore
+	 * MY_CUSTOM_SYSCALL and exit_group {{{ */
+
+	spin_lock(&sys_call_table_lock);
+	set_addr_rw((unsigned long)sys_call_table);
+
+	sys_call_table[MY_CUSTOM_SYSCALL] = orig_custom_syscall;
+	sys_call_table[__NR_exit_group] = orig_exit_group;
+
+	set_addr_ro((unsigned long)sys_call_table);
 	spin_unlock(&sys_call_table_lock);
+
+	/* }}} */
+
+	/* acquire my_table_lock, make it writable and set MY_CUSTOM_SYSCALL and
+	 * exit_group non-intercepted {{{ */
+
+	spin_lock(&my_table_lock);
+	table[MY_CUSTOM_SYSCALL].intercepted = 0;
+	table[__NR_exit_group].intercepted = 0;
+	spin_unlock(&my_table_lock);
+
+	/* }}} */
+
+	printk(KERN_NOTICE "%sRestored MY_CUSTOM_SYSCALL and exit_group.", MY_LOG_HEADER);
 }
 
 module_init(init_function);
