@@ -161,35 +161,42 @@ static int del_pid(pid_t pid) {{{
 	struct pid_list *ple;
 	int ispid = 0, s = 0;
 
-	for(s = 1; s < NR_syscalls; s++) {
+	/* for(s = 1; s < NR_syscalls; s++) { */
 
 		/* printk(KERN_DEBUG "%ssyscall %d has %d monitored pid's.",
 				MY_LOG_HEADER, s, table[s].listcount); */
 		/* printk(KERN_DEBUG "%ssyscall %d's list_head is at %p.",
 				MY_LOG_HEADER, s, &(table[s].my_list)); */
-		list_for_each_safe(i, n, &(table[s].my_list)) {
+		/* list_for_each_safe(i, n, &(table[s].my_list)) { */
 		/* list_for_each(i, &(table[s].my_list)) { */
 
-			ple=list_entry(i, struct pid_list, list);
+			/* ple=list_entry(i, struct pid_list, list);
 			if(ple->pid == pid) {
 
-				/* printk(KERN_DEBUG "%sFound %d in syscall %d's list.", MY_LOG_HEADER, pid, s); */
+				printk(KERN_DEBUG "%sFound %d in syscall %d's list.", MY_LOG_HEADER, pid, s);
 				list_del(i);
 				ispid = 1;
 				kfree(ple);
 
-				table[s].listcount--;
+				table[s].listcount--; */
 				/* If there are no more pids in sysc's list of pids, then
 				stop the monitoring only if it's not for all pids (monitored=2) */
-				if(table[s].listcount == 0 && table[s].monitored == 1) {
+				/* if(table[s].listcount == 0 && table[s].monitored == 1) {
 					table[s].monitored = 0;
 				}
-			}
-		}
-	}
+			} */
+		/* } */
+	/* } */
 
-	if (ispid) return 0;
-	return -1;
+	struct list_head my_list;
+	list_for_each_safe(i, n, &my_list) {
+	}
+	/* printk(KERN_DEBUG "%ssyscall %d's list_next is at %p.",
+			MY_LOG_HEADER, 1, &(table[1].my_list.next)); */
+
+	/* if (ispid) return 0;
+	return -1; */
+	return 0;
 }}}
 
 /**
@@ -305,11 +312,13 @@ asmlinkage long my_exit_group(struct pt_regs reg) {{{
  */
 asmlinkage long interceptor(struct pt_regs reg) {
 	int ret;
+	asmlinkage long (*orig_syscall)(struct pt_regs);
 	printk(KERN_DEBUG "%sCalled my interceptor function for %lx.", MY_LOG_HEADER, reg.ax);
 	log_message(current->pid, reg.ax, reg.ax, reg.bx, reg.cx, reg.dx, reg.si, reg.di);
 	spin_lock(&my_table_lock);
-	ret = table[reg.ax].f(reg);
+	orig_syscall = table[reg.ax].f;
 	spin_unlock(&my_table_lock);
+	ret = orig_syscall(reg);
 	printk(KERN_DEBUG "%sOriginal system call returned with %d.", MY_LOG_HEADER, ret);
 	return ret; // Just a placeholder, so it compiles with no warnings!
 }
@@ -549,7 +558,6 @@ static int init_function(void) {
 	spin_unlock(&sys_call_table_lock); */
 	
 	/* }}} old */
-
 
 	/* acquire sys_call_table_lock, make it writable and replace
 	 * MY_CUSTOM_SYSCALL and exit_group {{{ */
