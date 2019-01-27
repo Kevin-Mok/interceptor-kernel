@@ -163,28 +163,28 @@ static int del_pid(pid_t pid) {{{
 
 	for(s = 1; s < NR_syscalls; s++) {
 
-		printk(KERN_DEBUG "%ssyscall %d has %d monitored pid's.",
-				MY_LOG_HEADER, s, table[s].listcount);
+		/* printk(KERN_DEBUG "%ssyscall %d has %d monitored pid's.",
+				MY_LOG_HEADER, s, table[s].listcount); */
 		/* printk(KERN_DEBUG "%ssyscall %d's list_head is at %p.",
 				MY_LOG_HEADER, s, &(table[s].my_list)); */
 		list_for_each_safe(i, n, &(table[s].my_list)) {
 		/* list_for_each(i, &(table[s].my_list)) { */
 
-			/* ple=list_entry(i, struct pid_list, list);
+			ple=list_entry(i, struct pid_list, list);
 			if(ple->pid == pid) {
 
-				printk(KERN_DEBUG "%sFound %d in syscall %d's list.", MY_LOG_HEADER, pid, s);
+				/* printk(KERN_DEBUG "%sFound %d in syscall %d's list.", MY_LOG_HEADER, pid, s); */
 				list_del(i);
 				ispid = 1;
 				kfree(ple);
 
-				table[s].listcount--; */
+				table[s].listcount--;
 				/* If there are no more pids in sysc's list of pids, then
-				stop the monitoring only if it's not for all pids (monitored=2)
+				stop the monitoring only if it's not for all pids (monitored=2) */
 				if(table[s].listcount == 0 && table[s].monitored == 1) {
 					table[s].monitored = 0;
 				}
-			} */
+			}
 		}
 	}
 
@@ -274,11 +274,11 @@ asmlinkage long my_exit_group(struct pt_regs reg) {{{
 	/* using printk in this function will potentially result in errors! */
     /* printk(KERN_DEBUG "\nThis is my_exit_group.\n"); */
 	/* return 0; */
-	/* spin_lock(&my_table_lock);
-	printk(KERN_DEBUG "%sWant to remove %x from all lists.",
-			MY_LOG_HEADER, current->pid);
+	spin_lock(&my_table_lock);
+	/* printk(KERN_DEBUG "%sWant to remove %x from all lists.",
+			MY_LOG_HEADER, current->pid); */
 	del_pid(current->pid);
-	spin_unlock(&my_table_lock); */
+	spin_unlock(&my_table_lock);
 	return orig_exit_group(reg);
 }}}
 
@@ -307,7 +307,9 @@ asmlinkage long interceptor(struct pt_regs reg) {
 	int ret;
 	printk(KERN_DEBUG "%sCalled my interceptor function for %lx.", MY_LOG_HEADER, reg.ax);
 	log_message(current->pid, reg.ax, reg.ax, reg.bx, reg.cx, reg.dx, reg.si, reg.di);
+	spin_lock(&my_table_lock);
 	ret = table[reg.ax].f(reg);
+	spin_unlock(&my_table_lock);
 	printk(KERN_DEBUG "%sOriginal system call returned with %d.", MY_LOG_HEADER, ret);
 	return ret; // Just a placeholder, so it compiles with no warnings!
 }
@@ -400,22 +402,23 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 		/* REQUEST_SYSCALL_INTERCEPT {{{ */
 		
 		case REQUEST_SYSCALL_INTERCEPT:
+			spin_lock(&my_table_lock);
 			if (table[syscall].intercepted == 1) {
+				spin_unlock(&my_table_lock);
 				return -EBUSY;	
 			}
+			/* acquire my_table_lock, store original syscall and indicate
+			 * intercepted */
 			/* acquire sys_call_table_lock, make it writable and replace syscall */
 			spin_lock(&sys_call_table_lock);
+			table[syscall].f = sys_call_table[syscall];
+			table[syscall].intercepted = 1;
+			spin_unlock(&my_table_lock);
+
 			set_addr_rw((unsigned long)sys_call_table);
 			sys_call_table[syscall] = interceptor;
 			set_addr_ro((unsigned long)sys_call_table);
 			spin_unlock(&sys_call_table_lock);
-
-			/* acquire my_table_lock, store original syscall and indicate
-			 * intercepted */
-			spin_lock(&my_table_lock);
-			table[syscall].f = sys_call_table[syscall];
-			table[syscall].intercepted = 1;
-			spin_unlock(&my_table_lock);
 
 			printk(KERN_NOTICE "%sHijacked %d.", MY_LOG_HEADER, syscall);
 			break;
@@ -424,20 +427,21 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 		/* REQUEST_SYSCALL_RELEASE {{{ */
 		
 		case REQUEST_SYSCALL_RELEASE:
+			spin_lock(&my_table_lock);
 			if (table[syscall].intercepted == 0) {
+				spin_unlock(&my_table_lock);
 				return -EINVAL;	
 			}
+
+			/* acquire my_table_lock and indicate not intercepted */
 			/* acquire sys_call_table_lock, make it writable and restore syscall */
 			spin_lock(&sys_call_table_lock);
 			set_addr_rw((unsigned long)sys_call_table);
 			sys_call_table[syscall] = table[syscall].f;
-			set_addr_ro((unsigned long)sys_call_table);
-			spin_unlock(&sys_call_table_lock);
-
-			/* acquire my_table_lock and indicate not intercepted */
-			spin_lock(&my_table_lock);
 			table[syscall].intercepted = 0;
 			spin_unlock(&my_table_lock);
+			set_addr_ro((unsigned long)sys_call_table);
+			spin_unlock(&sys_call_table_lock);
 
 			printk(KERN_NOTICE "%sReleased %d.", MY_LOG_HEADER, syscall);
 			break;
@@ -446,10 +450,11 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 		/* REQUEST_START_MONITORING {{{ */
 		
 		case REQUEST_START_MONITORING:
+			spin_lock(&my_table_lock);
 			if (check_pid_monitored(syscall, pid) == 1) {
+				spin_unlock(&my_table_lock);
 				return -EBUSY;
 			}
-			spin_lock(&my_table_lock);
 			add_pid_sysc(pid, syscall);
 			spin_unlock(&my_table_lock);
 			break;
@@ -458,11 +463,12 @@ asmlinkage long my_syscall(int cmd, int syscall, int pid) {
 		/* REQUEST_STOP_MONITORING {{{ */
 		
 		case REQUEST_STOP_MONITORING:
+			spin_lock(&my_table_lock);
 			if (table[syscall].intercepted == 0 ||
 					check_pid_monitored(syscall, pid) == 0) {
+				spin_unlock(&my_table_lock);
 				return -EINVAL;	
 			}
-			spin_lock(&my_table_lock);
 			del_pid_sysc(pid, syscall);
 			spin_unlock(&my_table_lock);
 			break;
@@ -544,12 +550,14 @@ static int init_function(void) {
 	
 	/* }}} old */
 
-	orig_custom_syscall = sys_call_table[MY_CUSTOM_SYSCALL];
-	orig_exit_group = sys_call_table[__NR_exit_group];
 
 	/* acquire sys_call_table_lock, make it writable and replace
 	 * MY_CUSTOM_SYSCALL and exit_group {{{ */
 	spin_lock(&sys_call_table_lock);
+
+	orig_custom_syscall = sys_call_table[MY_CUSTOM_SYSCALL];
+	orig_exit_group = sys_call_table[__NR_exit_group];
+
 	set_addr_rw((unsigned long)sys_call_table);
 
 	sys_call_table[MY_CUSTOM_SYSCALL] = my_syscall;
